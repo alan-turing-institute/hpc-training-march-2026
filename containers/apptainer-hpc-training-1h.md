@@ -58,7 +58,7 @@ whoami
 ```
 
 ### 25-35 min: GPUs, Binds, and Batch Jobs
-- GPU pass-through with `--nv`.
+- GPU pass-through with `--nv` or `--nvccli`.
 - Bind behavior and explicit binds for scratch/work dirs (`--bind`).
 - Batch job pattern using `sbatch` / `srun`.
 
@@ -66,6 +66,22 @@ Demo commands:
 ```bash
 srun --gpus=1 --ntasks=1 --time=5 \
   singularity exec --nv ubuntu.sif nvidia-smi --list-gpus
+```
+
+### Isambard-AI specific hints and tips
+- Isambard-AI configures project-specific temp directories, which can cause problems; so always configure your temp directory explicitly:
+```sh
+chmod 1777 $TMPDIR
+singularity build --nv --bind $TMPDIR:/tmp container.sif container.def
+```
+And in the `%post` section of your def file:
+```singularity
+%post
+        export TMPDIR=/tmp
+```
+- Isambard-AI makes extensive use of symlinks for project directories and the like, but apptainer doesn't like these. Always ensure you switch to the real path before either building or running an apptainer container:
+```sh
+cd -P .
 ```
 
 ### 35-50 min: Multi-Node Performance Pattern (Key Section)
@@ -88,9 +104,16 @@ If dropping into shell first:
 singularity exec --nv image.sif /host/adapt.sh bash
 ```
 
+Or add it to the `%runscript` of your def file:
+```singularity
+%runscript
+        /host/adapt.sh | grep -v -e "This container" -e "Please go" -e ""
+        python train.py $@
+```
+
 ### 50-55 min: Gotchas and Debugging Checklist
 - Architecture mismatch (`x86_64` image on Arm): verify image supports `aarch64`.
-- Forgetting `--nv`: GPU not visible in container.
+- Forgetting `--nv` or `--nvccli`: GPU not visible in container.
 - Forgetting `/host/adapt.sh` on multi-node: poor or broken MPI/NCCL behavior.
 - Running with `run` when you needed `exec`: wrong entrypoint behavior.
 - Missing binds: code/data not visible where expected.
@@ -125,8 +148,10 @@ Participants do:
 - Emphasize that containers package user space, not the kernel/interconnect stack.
 - Reuse same training code as prior distributed training lesson so focus stays on container mechanics.
 
-## Optional Appendix: Minimal `.def` Skeleton
-```def
+## Optional Appendix
+Minimal `.def` Skeleton
+
+```singularity
 Bootstrap: docker
 From: nvcr.io/nvidia/pytorch:25.05-py3
 
@@ -136,6 +161,45 @@ From: nvcr.io/nvidia/pytorch:25.05-py3
 
 %runscript
     exec python -u train.py "$@"
+```
+Multi-stage `.def` skeleton
+
+```singularity
+Bootstrap: docker
+Registry: docker.io
+From: nvidia/cuda:12.9.1-cudnn-devel-ubuntu24.04
+Stage: build
+
+%post   
+        # Configure environment and install build dependencies
+        export TMPDIR=/tmp
+        WORK_DIR=$(mktemp -d --suffix=-work)
+        cd $WORK_DIR
+        apt -y update
+        apt -y install cuda-toolkit-12-9
+        
+        # Build stuff
+        git clone https://github.com/..../repo.git
+        cd repo.git
+        ... build the executable ...
+
+Bootstrap: docker
+Registry: docker.io
+From: nvidia/cuda:12.9.1-cudnn-devel-ubuntu24.04
+Stage: final
+
+%files from build
+        # Copy the built executable to the runtime path of a clean environment
+        /tmp/.../executable /usr/bin/executable
+
+%post   
+        # Configure environment and install runtime dependencies
+        export TMPDIR=/tmp
+        apt -y update
+
+%runscript
+        /host/adapt.sh | grep -v -e "This container" -e "Please go" -e ""
+        executable $@
 ```
 
 ## Source References
