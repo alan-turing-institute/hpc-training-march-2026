@@ -1,3 +1,3 @@
-# HPC Training - March 2026
+# Isambard-AI training - 12th March 2026
 
-Material for some sessions of the March Isambard AI training day.
+Material for the Turing sessions of the BriCS x Turing Isambard-AI workshop.
