@@ -1,0 +1,3 @@
+[submodule "1_profiling"]
+	path = 1_profiling
+	url = git@github.com:tomaslaz/tutorial-pytorch-prof.git
